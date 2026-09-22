@@ -46,6 +46,13 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
+def _env_float(name: str, default: float) -> float:
+    try:
+        return float(_env(name) or default)
+    except ValueError:
+        return default
+
+
 @dataclass(frozen=True)
 class Settings:
     # --- 模型网关 ---

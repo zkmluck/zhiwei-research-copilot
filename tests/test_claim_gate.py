@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import os
 import unittest
 
 from zhiwei.contracts import Anchor, Claim, Evidence, Verdict
@@ -198,6 +199,46 @@ class TestAttachAnchors(unittest.TestCase):
         self.assertTrue(claims[0].evidence[0].anchor.is_located())
         # 找不到的引文不许被"凑合"成某个位置
         self.assertFalse(claims[1].evidence[0].anchor.is_located())
+
+
+class TestGateConfig(unittest.TestCase):
+    """阈值配置本身也是要测的：配反了必须报错，而不是默默跑歪。"""
+
+    def test_defaults_keep_block_below_allow(self):
+        cfg = GateConfig()
+        self.assertLess(cfg.block_at, cfg.allow_at)
+
+    def test_inverted_thresholds_are_rejected(self):
+        with self.assertRaises(ValueError):
+            GateConfig(allow_at=0.30, block_at=0.60)
+
+    def test_equal_thresholds_are_rejected(self):
+        # 相等意味着「待核实」这个档位不存在了，这不该被允许
+        with self.assertRaises(ValueError):
+            GateConfig(allow_at=0.50, block_at=0.50)
+
+    def test_out_of_range_is_rejected(self):
+        with self.assertRaises(ValueError):
+            GateConfig(allow_at=1.50, block_at=0.35)
+
+    def test_env_override_uses_calibrated_pair(self):
+        os.environ["ZHIWEI_GATE_BLOCK_AT"] = "0.20"
+        os.environ["ZHIWEI_GATE_ALLOW_AT"] = "0.85"
+        try:
+            cfg = GateConfig.from_env()
+        finally:
+            os.environ.pop("ZHIWEI_GATE_BLOCK_AT", None)
+            os.environ.pop("ZHIWEI_GATE_ALLOW_AT", None)
+        self.assertAlmostEqual(cfg.block_at, 0.20)
+        self.assertAlmostEqual(cfg.allow_at, 0.85)
+
+    def test_unparsable_env_falls_back_to_default(self):
+        os.environ["ZHIWEI_GATE_ALLOW_AT"] = "not-a-number"
+        try:
+            cfg = GateConfig.from_env()
+        finally:
+            os.environ.pop("ZHIWEI_GATE_ALLOW_AT", None)
+        self.assertAlmostEqual(cfg.allow_at, GateConfig().allow_at)
 
 
 if __name__ == "__main__":
