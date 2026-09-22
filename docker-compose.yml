@@ -1,0 +1,19 @@
+services:
+  zhiwei:
+    build: .
+    image: zhiwei-research-copilot:latest
+    container_name: zhiwei
+    ports:
+      - "8000:8000"
+    # 没有 .env 也能起：解析、检索、图谱、闸门硬检查全部离线可用，
+    # 只是生成类能力降级。这保证演示地址不会因为缺 key 而打不开。
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      ZHIWEI_HOST: 0.0.0.0
+      ZHIWEI_PORT: "8000"
+      ZHIWEI_DATA_DIR: /app/data
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

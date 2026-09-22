@@ -1,0 +1,13 @@
+.git
+.gitignore
+.env
+data
+data.old
+_testdata
+**/__pycache__
+**/*.pyc
+.venv
+venv
+*.log
+output
+web/vendor
