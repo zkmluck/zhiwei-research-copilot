@@ -1,0 +1,21 @@
+# 环境与密钥
+.env
+*.key
+
+# 数据与缓存（含历史数据目录，避免误提交）
+data/
+data.old/
+_testdata/
+*.sqlite
+*.sqlite3
+.chroma/
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# 运行产物
+output/
+web/vendor/
+*.log
