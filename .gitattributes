@@ -1,0 +1,10 @@
+# 统一换行，避免跨平台 diff 噪声
+* text=auto eol=lf
+*.bat text eol=crlf
+
+# 二进制产物不做文本归一化
+*.pdf binary
+*.png binary
+*.jpg binary
+*.sqlite3 binary
+*.docx binary
