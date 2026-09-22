@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>知微 ZhiWei · 溯源型科研助手 Agent</title>
+<link rel="stylesheet" href="./css/app.css" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true">知</span>
+    <div class="brand-text">
+      <strong>知微 ZhiWei</strong>
+      <span>科研助手不该写得像，而该指得出</span>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <button class="ghost" id="btn-health" type="button" title="模型网关状态">
+      <span class="dot" id="health-dot"></span><span id="health-text">检测中</span>
+    </button>
+    <button class="ghost" id="btn-usage" type="button" title="点击刷新用量">用量 <b id="usage-cost">—</b></button>
+    <span class="cdn-warn" id="cdn-warn" hidden>离线模式：部分渲染能力不可用</span>
+  </div>
+</header>
+
+<main class="layout">
+  <aside class="panel library" id="library-panel">
+    <div class="panel-head">
+      <h2>文献库</h2>
+      <button class="ghost small" id="btn-refresh-library" type="button">刷新</button>
+    </div>
+    <div class="uploader" id="uploader">
+      <input type="file" id="file-input" accept="application/pdf" multiple hidden />
+      <p class="uploader-hint">把 PDF 拖到这里，或 <button class="link" id="btn-pick" type="button">选择文件</button></p>
+      <p class="uploader-sub">支持扫描件（自动 OCR）、双栏排版、多版本同一论文</p>
+      <div class="upload-list" id="upload-list"></div>
+    </div>
+    <div class="search-row">
+      <input type="search" id="library-search" placeholder="按标题 / 作者过滤" />
+    </div>
+    <ul class="paper-list" id="paper-list"></ul>
+    <div class="panel-foot" id="library-foot"></div>
+  </aside>
+
+  <section class="workspace">
+    <nav class="tabs" id="tabs">
+      <button class="tab is-active" data-tab="reader" type="button">阅读</button>
+      <button class="tab" data-tab="qa" type="button">问答</button>
+      <button class="tab" data-tab="graph" type="button">图谱</button>
+      <button class="tab" data-tab="survey" type="button">综述</button>
+      <button class="tab" data-tab="writing" type="button">写作</button>
+      <button class="tab" data-tab="discover" type="button">发现</button>
+    </nav>
+
+    <div class="tab-body">
+      <section class="tab-panel is-active" data-panel="reader">
+        <div class="reader-bar">
+          <button class="ghost small" id="reader-prev" type="button">上一页</button>
+          <span class="page-indicator"><b id="reader-page">-</b> / <span id="reader-pages">-</span></span>
+          <button class="ghost small" id="reader-next" type="button">下一页</button>
+          <label class="inline-field">跳页 <input type="number" id="reader-jump" min="1" value="1" /></label>
+          <label class="inline-field">缩放
+            <select id="reader-zoom">
+              <option value="0.8">80%</option>
+              <option value="1" selected>100%</option>
+              <option value="1.3">130%</option>
+              <option value="1.6">160%</option>
+            </select>
+          </label>
+          <button class="ghost small" id="reader-translate" type="button">翻译本页</button>
+          <span class="reader-title" id="reader-title"></span>
+        </div>
+        <div class="reader-grid">
+          <div class="reader-outline">
+            <h3>目录</h3>
+            <div id="reader-outline" class="outline-tree"></div>
+            <h3>参考文献</h3>
+            <ol id="reader-refs" class="ref-list"></ol>
+          </div>
+          <div class="reader-stage" id="reader-stage">
+            <div class="empty-state" id="reader-empty">从左侧选一篇文献开始</div>
+            <canvas id="pdf-canvas"></canvas>
+            <div class="pdf-overlay" id="pdf-overlay"></div>
+          </div>
+          <div class="reader-side">
+            <h3>中英对照</h3>
+            <div id="reader-translation" class="translation-list"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="tab-panel" data-panel="qa">
+        <div class="qa-bar">
+          <input type="text" id="qa-question" placeholder="例如：训练用了多少张什么型号的 GPU，训练了多久？" />
+          <select id="qa-mode">
+            <option value="auto">自动</option>
+            <option value="single">单篇</option>
+            <option value="cross">跨文献</option>
+          </select>
+          <button class="primary" id="qa-run" type="button">提问</button>
+        </div>
+        <div class="qa-grid">
+          <div class="qa-answer">
+            <div class="qa-trace" id="qa-trace"></div>
+            <div class="qa-text" id="qa-text"></div>
+            <div class="qa-meta" id="qa-meta"></div>
+          </div>
+          <div class="qa-claims" id="qa-claims"></div>
+        </div>
+      </section>
+
+      <section class="tab-panel" data-panel="graph">
+        <div class="graph-bar">
+          <button class="primary" id="graph-build" type="button">构建引用图谱</button>
+          <label class="inline-field"><input type="checkbox" id="graph-classify" checked /> 用模型判定引用意图</label>
+          <label class="inline-field"><input type="checkbox" id="graph-substantive" /> 只看实质引用</label>
+          <span class="muted" id="graph-stats"></span>
+        </div>
+        <div class="graph-grid">
+          <div id="graph-canvas" class="graph-canvas"></div>
+          <div class="graph-detail" id="graph-detail"><p class="muted">点一个节点看它的指标与引用上下文</p></div>
+        </div>
+      </section>
+
+      <section class="tab-panel" data-panel="survey">
+        <div class="survey-bar">
+          <input type="text" id="survey-topic" placeholder="综述主题（可留空）" />
+          <button class="primary" id="survey-run" type="button">生成综述</button>
+          <button class="ghost small" id="survey-future" type="button">扫描 Future Work 时效性</button>
+        </div>
+        <div class="survey-grid">
+          <article class="markdown" id="survey-body"><p class="muted">点「生成综述」从图谱里长出一篇可溯源的综述</p></article>
+          <div class="survey-side">
+            <h3>时间线</h3>
+            <div id="survey-timeline"></div>
+            <h3>Future Work</h3>
+            <div id="survey-future-list"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="tab-panel" data-panel="writing">
+        <div class="writing-grid">
+          <div class="writing-col">
+            <h3>Idea → 论文框架</h3>
+            <textarea id="writing-idea" rows="3" placeholder="一句话描述你的想法，例如：把引用图谱的先验注入检索排序"></textarea>
+            <div class="row">
+              <select id="writing-venue">
+                <option value="generic">通用</option>
+                <option value="acl">ACL</option>
+                <option value="neurips">NeurIPS</option>
+                <option value="ieee">IEEE</option>
+              </select>
+              <button class="primary" id="writing-run" type="button">生成框架</button>
+            </div>
+            <div class="markdown" id="writing-outline"></div>
+          </div>
+          <div class="writing-col">
+            <h3>架构图（Mermaid / Graphviz / TikZ）</h3>
+            <div class="row">
+              <select id="diagram-kind">
+                <option value="mermaid">Mermaid</option>
+                <option value="graphviz">Graphviz</option>
+                <option value="tikz">TikZ</option>
+              </select>
+              <button class="ghost" id="diagram-from-graph" type="button">用引用图谱生成</button>
+            </div>
+            <div id="diagram-preview" class="diagram-preview"></div>
+            <pre class="code" id="diagram-code"></pre>
+          </div>
+          <div class="writing-col">
+            <h3>数据 → 图 + Caption</h3>
+            <textarea id="figure-csv" rows="5" placeholder="把 CSV 粘进来，第一行是表头"></textarea>
+            <div class="row">
+              <select id="figure-chart">
+                <option value="line">折线</option>
+                <option value="bar">柱状</option>
+                <option value="radar">雷达</option>
+                <option value="table">表格</option>
+              </select>
+              <input type="text" id="figure-title" placeholder="图标题" />
+              <button class="primary" id="figure-run" type="button">出图</button>
+            </div>
+            <div id="figure-output"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="tab-panel" data-panel="discover">
+        <div class="discover-bar">
+          <input type="text" id="discover-query" placeholder="检索 arXiv / OpenAlex，例如：retrieval augmented generation survey" />
+          <button class="primary" id="discover-search" type="button">检索</button>
+          <button class="ghost" id="discover-recommend" type="button">按我的库推荐</button>
+          <button class="ghost" id="discover-track" type="button">跑一次追踪</button>
+        </div>
+        <div class="discover-grid">
+          <div id="discover-results"></div>
+          <div class="discover-side">
+            <h3>推荐</h3>
+            <div id="discover-recommend-list" class="muted">点「按我的库推荐」</div>
+            <h3>追踪状态</h3>
+            <div id="discover-track-status" class="muted">—</div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </section>
+</main>
+
+<div class="toast" id="toast" hidden></div>
+<script type="module" src="./js/app.js"></script>
+</body>
+</html>
