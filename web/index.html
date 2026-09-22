@@ -53,6 +53,7 @@
       <button class="tab" data-tab="survey" type="button">综述</button>
       <button class="tab" data-tab="writing" type="button">写作</button>
       <button class="tab" data-tab="discover" type="button">发现</button>
+      <button class="tab" data-tab="agent" type="button">调研</button>
     </nav>
 
     <div class="tab-body">
@@ -115,7 +116,7 @@
       <section class="tab-panel" data-panel="graph">
         <div class="graph-bar">
           <button class="primary" id="graph-build" type="button">构建引用图谱</button>
-          <label class="inline-field"><input type="checkbox" id="graph-classify" checked /> 用模型判定引用意图</label>
+          <label class="inline-field"><input type="checkbox" id="graph-classify" /> 用模型判定引用意图（慢）</label>
           <label class="inline-field"><input type="checkbox" id="graph-substantive" /> 只看实质引用</label>
           <span class="muted" id="graph-stats"></span>
         </div>
@@ -204,6 +205,38 @@
             <h3>追踪状态</h3>
             <div id="discover-track-status" class="muted">—</div>
           </div>
+        </div>
+      </section>
+
+      <section class="tab-panel" data-panel="agent">
+        <div class="agent-bar">
+          <input type="text" id="agent-goal" placeholder="例如：Transformer 这条线在解决什么问题，现在还有哪些没做完的方向？" />
+          <select id="agent-mode">
+            <option value="auto">自动</option>
+            <option value="single">单篇</option>
+            <option value="cross">跨文献</option>
+          </select>
+          <button class="ghost small" id="agent-plan-only" type="button">只看计划</button>
+          <button class="ghost small" id="agent-stop" type="button" hidden>停止</button>
+          <button class="primary" id="agent-run" type="button">开始调研</button>
+        </div>
+        <div class="agent-meta" id="agent-meta">Agent 会先规划、再调工具，每一步都写在下面；最终答案仍然逐句过主张闸门。</div>
+        <div class="agent-grid">
+          <div class="agent-timeline" id="agent-timeline"></div>
+          <div class="agent-side">
+            <h3>工具名册</h3>
+            <div class="tool-catalog" id="agent-tools"></div>
+            <h3>发现</h3>
+            <div class="agent-findings" id="agent-findings"></div>
+          </div>
+        </div>
+        <div class="qa-grid">
+          <div class="qa-answer">
+            <div class="agent-answer-label">最终答案（每一句都过了主张闸门）</div>
+            <div class="qa-text" id="agent-text"></div>
+            <div class="agent-answer-meta" id="agent-answer-meta"></div>
+          </div>
+          <div class="qa-claims" id="agent-claims"></div>
         </div>
       </section>
     </div>

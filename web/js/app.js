@@ -11,6 +11,7 @@ import * as graph from './views/graph.js';
 import * as survey from './views/survey.js';
 import * as writing from './views/writing.js';
 import * as discover from './views/discover.js';
+import * as agent from './views/agent.js';
 
 function setTab(name) {
   update({ tab: name });
@@ -59,6 +60,7 @@ async function boot() {
   survey.mount();
   writing.mount();
   discover.mount();
+  agent.mount();
 
   document.addEventListener('zhiwei:open-paper', (event) => {
     setTab('reader');
