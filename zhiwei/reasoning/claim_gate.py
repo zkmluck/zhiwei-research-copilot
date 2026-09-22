@@ -22,7 +22,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional, Protocol
 
-from ..config import settings
+from ..config import _env_float, settings
 from ..contracts import Claim, Evidence, GateDecision, Verdict
 from ..llm import prompts
 from ..llm.client import Gateway, GatewayError, get_gateway
@@ -43,7 +43,11 @@ from .evidence import (
 
 @dataclass
 class GateConfig:
-    """闸门参数。默认值由评测集标定，见 evals/。"""
+    """闸门参数。默认值由评测集标定，见 evals/report.md。
+
+    阈值就是立场：放行线定得低，等于默认相信模型；定得高，等于宁可多说一句「待核实」。
+    默认取偏保守的一档，`ZHIWEI_GATE_ALLOW_AT` / `ZHIWEI_GATE_BLOCK_AT` 可在部署时覆盖。
+    """
 
     allow_at: float = 0.75        # 综合分 >= 此值才放行
     block_at: float = 0.35        # 综合分 < 此值直接拦下
@@ -56,6 +60,22 @@ class GateConfig:
     w_entailment: float = 0.55
     w_overlap: float = 0.25
     w_location: float = 0.20
+
+    def __post_init__(self) -> None:
+        # 拦下线高于放行线会让"待核实"这个档位凭空消失，直接拒绝启动而不是默默跑歪
+        if not 0.0 <= self.block_at < self.allow_at <= 1.0:
+            raise ValueError(
+                "闸门阈值必须满足 0 <= block_at < allow_at <= 1，"
+                f"当前为 block_at={self.block_at} / allow_at={self.allow_at}"
+            )
+
+    @classmethod
+    def from_env(cls) -> "GateConfig":
+        """带上环境变量覆盖的构造。两个变量都是可选的，不写就用上面的默认值。"""
+        return cls(
+            allow_at=_env_float("ZHIWEI_GATE_ALLOW_AT", cls.allow_at),
+            block_at=_env_float("ZHIWEI_GATE_BLOCK_AT", cls.block_at),
+        )
 
     def to_dict(self) -> dict:
         return {
@@ -191,6 +211,9 @@ class HybridJudge:
     """先本地判硬伤，再让模型判语义；两者取保守值。"""
 
     name = "hybrid"
+    # 本地裁判给出的分数低于这个数，说明已经是硬伤（例如数字对不上），
+    # 没必要再花一次模型调用去复核。这是"省钱线"，与闸门的放行/拦下线无关。
+    EARLY_EXIT_BELOW = 0.35
 
     def __init__(self, gateway: Optional[Gateway] = None, model: Optional[str] = None) -> None:
         self.local = LocalJudge()
@@ -198,7 +221,7 @@ class HybridJudge:
 
     def entail(self, claim_text: str, quotes: list[str]) -> JudgeResult:
         local = self.local.entail(claim_text, quotes)
-        if local.score < 0.35:
+        if local.score < self.EARLY_EXIT_BELOW:
             # 本地已判出硬伤（如数字对不上），不必再花钱问模型
             return local
         llm = self.llm.entail(claim_text, quotes)
@@ -225,7 +248,7 @@ class ClaimGate:
         config: Optional[GateConfig] = None,
         gateway: Optional[Gateway] = None,
     ) -> None:
-        self.config = config or GateConfig()
+        self.config = config or GateConfig.from_env()
         if judge is not None:
             self.judge = judge
         else:

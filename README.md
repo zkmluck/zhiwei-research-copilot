@@ -63,6 +63,15 @@
 
 复现：`python evals/calibrate.py`（不需要任何 API key）。完整网格见 [`evals/report.md`](evals/report.md)。
 
+代码里的默认值是偏保守的那一档；标定最优怎么用起来，写在 `.env` 里即可（不写就用默认）：
+
+```bash
+ZHIWEI_GATE_BLOCK_AT=0.20
+ZHIWEI_GATE_ALLOW_AT=0.85
+```
+
+闸门启动时会校验 `0 <= block_at < allow_at <= 1`，配反了直接拒绝启动，不会静默跑歪。
+
 ---
 
 ## 三、赛题六大模块的落地情况
