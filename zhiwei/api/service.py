@@ -415,7 +415,7 @@ def graph_key(doc_ids: list[str]) -> tuple[str, ...]:
     return tuple(sorted(d for d in doc_ids if d))
 
 
-def build_graph(doc_ids: list[str], *, classify: bool = True) -> tuple[Any, list, dict]:
+def build_graph(doc_ids: list[str], *, classify: bool = False) -> tuple[Any, list, dict]:
     from ..graph.centrality import analyze_network
     from ..graph.citation import build_network
 
@@ -432,7 +432,7 @@ def build_graph(doc_ids: list[str], *, classify: bool = True) -> tuple[Any, list
     return network, insights, metrics
 
 
-def get_graph(doc_ids: list[str], *, classify: bool = True) -> tuple[Any, list, dict]:
+def get_graph(doc_ids: list[str], *, classify: bool = False) -> tuple[Any, list, dict]:
     with _graph_lock:
         cached = _graph_cache.get(graph_key(doc_ids))
     if cached is not None:

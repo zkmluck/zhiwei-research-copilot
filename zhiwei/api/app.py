@@ -16,6 +16,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from .. import __version__
+from ..agents import planner, stream_agent
 from ..config import settings
 from ..ingest import pdf_parser
 from ..ingest.version_diff import diff_versions
@@ -281,18 +282,22 @@ def create_app() -> FastAPI:
         ]
         if not doc_ids:
             raise HTTPException(400, error_payload("empty_library", "库里还没有文献"))
+        # 默认走离线启发式分类：秒级出图，且不依赖网络与密钥。
+        # 需要让模型精判引用意图时，显式传 classify=true（会慢，几十次模型往返）。
+        classify = bool(body.get("classify"))
         collected: list[dict] = []
         for doc_id in doc_ids:
             library = deps.library()
             edges = [e for e in library.load_citations([doc_id])]
             collected.append({"doc_id": doc_id, "edges": len(edges)})
-        network, insights, metrics = service.build_graph(doc_ids)
+        network, insights, metrics = service.build_graph(doc_ids, classify=classify)
         return _json(
             {
                 "stats": network.to_dict().get("stats", {}),
                 "metrics": metrics,
                 "nodes": len(insights),
                 "per_doc": collected,
+                "classified_by": "llm" if classify else "offline",
             }
         )
 
@@ -539,51 +544,14 @@ def create_app() -> FastAPI:
     def agent_run(body: dict = Body(...)) -> StreamingResponse:
         goal = str(body.get("goal") or "").strip()
         doc_ids = [str(d) for d in (body.get("doc_ids") or []) if d]
+        mode = str(body.get("mode") or "auto")
 
         def gen() -> Iterator[str]:
-            if not goal:
-                yield _sse("error", {"kind": "empty_goal", "message": "先说清楚要调研什么"})
-                return
-            started = time.time()
-            subgoals = [
-                "拆解意图，确定检索词",
-                "在本地文献库里检索证据",
-                "构建引用网络并挖关键节点",
-                "扫描各篇的 Future Work 时效性",
-                "汇总成可溯源的调研提纲",
-            ]
-            yield _sse("plan", {"goal": goal, "subgoals": subgoals})
-            for index, label in enumerate(subgoals):
-                yield _sse(
-                    "node",
-                    {"node": f"step{index + 1}", "status": "running", "label": label},
-                )
-                if index == 0:
-                    yield _sse("tool", {"name": "llm.rewrite", "detail": f"把「{goal[:24]}」改写成检索式"})
-                else:
-                    yield _sse("tool", {"name": "library.search", "detail": "本地混合检索（BM25 + 向量 + RRF）"})
-                yield _sse(
-                    "node",
-                    {
-                        "node": f"step{index + 1}",
-                        "status": "done",
-                        "label": label,
-                        "ms": int((time.time() - started) * 1000),
-                    },
-                )
             try:
-                answer = deps.engine().answer(goal, doc_ids=doc_ids or None, mode="auto")
-                for claim in answer.claims:
-                    yield _sse("claim", claim)
-                yield _sse(
-                    "done",
-                    {
-                        "text": answer.text,
-                        "support_rate": answer.support_rate,
-                        "refused": answer.refused,
-                        "ms": int((time.time() - started) * 1000),
-                    },
-                )
+                for event, payload in stream_agent(
+                    deps.agent(), goal, doc_ids=doc_ids, mode=mode
+                ):
+                    yield _sse(event, payload)
             except Exception as exc:  # noqa: BLE001
                 yield _sse("error", {"kind": type(exc).__name__, "message": str(exc)})
 
@@ -592,6 +560,28 @@ def create_app() -> FastAPI:
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
+
+    @app.get("/api/agent/tools")
+    def agent_tools() -> JSONResponse:
+        """Agent 的工具名册。规划器只能从这份名册里选，界面上也照实展示。"""
+        registry = deps.registry()
+        return _json({"tools": registry.catalog(), "count": len(registry.names())})
+
+    @app.post("/api/agent/plan")
+    def agent_plan(body: dict = Body(...)) -> JSONResponse:
+        """只出计划、不执行 —— 让人先看清 Agent 打算怎么做。"""
+        goal = str(body.get("goal") or "").strip()
+        if not goal:
+            raise HTTPException(400, error_payload("empty_goal", "先说清楚要调研什么"))
+        doc_ids = [str(d) for d in (body.get("doc_ids") or []) if d]
+        planned = planner.plan(
+            goal,
+            library=deps.library(),
+            registry=deps.registry(),
+            gateway=deps.gateway(),
+            doc_ids=doc_ids,
+        )
+        return _json(planned.to_dict())
 
     # ---------------------------------------------------------------- 静态前端
     web_dir = Path(__file__).resolve().parents[2] / "web"

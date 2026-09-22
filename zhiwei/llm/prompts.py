@@ -333,3 +333,66 @@ def build_future_work_extract_user(blocks: list[dict]) -> str:
     return "\n\n".join(
         f"[第{b.get('page', '?')}页] {b.get('text', '').strip()}" for b in blocks
     )
+
+
+# ---------------------------------------------------------------------------
+# Agent 规划 / 再规划
+# ---------------------------------------------------------------------------
+
+AGENT_PLANNER_SYSTEM = (
+    "你是科研调研 Agent 的规划器。给你一个调研目标和一份工具名册，你产出执行计划。\n"
+    "纪律：\n"
+    "1. 只能用名册里的工具，工具名必须逐字一致，不许发明工具；\n"
+    "2. 参数只能用名册里列出的键，绝对不要编造 doc_id、路径或年份；\n"
+    "3. 计划要短：3-6 步。一步能拿到的信息不要拆成三步；\n"
+    "4. 先看清库里有什么（library.stats），再去捞内容；\n"
+    "5. 标了「需要外网」的工具在离线环境会失败，最多放一步，别把计划押在它身上；\n"
+    "6. 你只负责规划，不负责下结论 —— 结论必须由工具捞到的原文证据支撑。\n"
+    "输出 JSON：{\"steps\": [{\"tool\": \"工具名\", \"args\": {...}, \"why\": \"为什么这一步值得做\"}], "
+    "\"stop_when\": \"什么条件下可以收尾\", \"note\": \"一句话说明你的计划思路\"}"
+)
+
+
+def build_agent_planner_user(
+    goal: str, catalog: list[dict], library_summary: dict, doc_ids: list[str]
+) -> str:
+    lines = [
+        f"【调研目标】{goal}",
+        "",
+        f"【文献库】共 {library_summary.get('papers', 0)} 篇："
+        + ("、".join(library_summary.get("titles") or []) or "（空库）"),
+    ]
+    if doc_ids:
+        lines.append(f"【本次限定范围】{', '.join(doc_ids)}")
+    lines.append("")
+    lines.append("【工具名册】")
+    for spec in catalog:
+        params = "、".join(f"{k}：{v}" for k, v in (spec.get("params") or {}).items()) or "无参数"
+        net = "（需要外网）" if spec.get("network") else ""
+        lines.append(f"- {spec.get('name')}{net}：{spec.get('description')}｜参数：{params}")
+    lines.append("")
+    lines.append("请输出这份调研的执行计划 JSON。")
+    return "\n".join(lines)
+
+
+AGENT_REPLAN_SYSTEM = (
+    "你是科研调研 Agent 的规划器，现在做的是**再规划**："
+    "根据已经完成的观察，判断是否还缺关键证据。\n"
+    "纪律：\n"
+    "1. 缺什么补什么，最多给 2 步；\n"
+    "2. 已经做过的调用不要重复；\n"
+    "3. 已有观察足以回答目标时，返回空计划 {\"steps\": []}，不要为了显得忙碌而凑步骤；\n"
+    "4. 工具名必须命中名册。\n"
+    "输出 JSON：{\"steps\": [{\"tool\": \"工具名\", \"args\": {...}, \"why\": \"补这一步是因为...\"}], "
+    "\"stop_when\": \"...\", \"note\": \"...\"}"
+)
+
+
+def build_agent_replan_user(goal: str, catalog: list[dict], brief: str) -> str:
+    lines = [f"【调研目标】{goal}", "", "【已经完成的观察】", brief, "", "【可调用工具】"]
+    for spec in catalog:
+        params = "、".join(f"{k}：{v}" for k, v in (spec.get("params") or {}).items()) or "无参数"
+        lines.append(f"- {spec.get('name')}：{spec.get('description')}｜参数：{params}")
+    lines.append("")
+    lines.append("现在判断：还缺什么关键证据？给出追加步骤（没有就返回空数组）。")
+    return "\n".join(lines)

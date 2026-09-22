@@ -59,6 +59,43 @@ def engine() -> ScholarEngine:
         return _cache["engine"]
 
 
+def registry() -> Any:
+    """Agent 的工具名册。工具本身是各能力模块的薄封装，不复制业务逻辑。"""
+    with _lock:
+        if "registry" not in _cache:
+            from ..agents.tools import build_default_registry
+
+            def graph_provider(ids):
+                from .service import get_graph
+
+                return get_graph(ids, classify=False)
+
+            _cache["registry"] = build_default_registry(
+                library=library(),
+                engine=engine(),
+                gateway=gateway(),
+                data_dir=settings.data_dir,
+                gate=gate(),
+                graph_provider=graph_provider,
+            )
+        return _cache["registry"]
+
+
+def agent() -> Any:
+    """Agent 本体：规划 + 调工具 + 记观察 + 收尾过闸门。"""
+    with _lock:
+        if "agent" not in _cache:
+            from ..agents.orchestrator import ResearchAgent
+
+            _cache["agent"] = ResearchAgent(
+                engine=engine(),
+                library=library(),
+                registry=registry(),
+                gateway=gateway(),
+            )
+        return _cache["agent"]
+
+
 def data_dir():
     return settings.data_dir
 
