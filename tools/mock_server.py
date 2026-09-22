@@ -225,6 +225,59 @@ def _now() -> str:
     return time.strftime("%Y-%m-%d %H:%M:%S")
 
 
+# ---------------------------------------------------------------------------
+# Agent 演示数据：假后端也要如实演示「规划 → 调工具 → 记观察 → 收尾」的事件形状
+# ---------------------------------------------------------------------------
+
+MOCK_TOOLS = [
+    {"name": "library.stats", "description": "看清本地文献库里有什么：篇数、页数、切块数、版本情况。", "params": {}, "network": False, "cost": "cheap"},
+    {"name": "library.search", "description": "在本地文献库里做混合检索（BM25 + 向量 + RRF），返回带页码锚点的原文证据。", "params": {"query": "检索词", "top_k": "返回条数"}, "network": False, "cost": "model"},
+    {"name": "graph.build", "description": "构建引用图谱：节点、边、四种角色（基石 / 桥接 / 衍生 / 孤岛）。", "params": {"doc_ids": "只看这几篇"}, "network": False, "cost": "cheap"},
+    {"name": "graph.key_nodes", "description": "挖出最核心的节点，并给出「为什么它是核心」的人话理由。", "params": {"limit": "返回条数"}, "network": False, "cost": "cheap"},
+    {"name": "future_work.scan", "description": "抽取 Future Work 并判定是否已被后续工作解决。", "params": {"max_items": "每篇最多几条"}, "network": False, "cost": "model"},
+    {"name": "survey.generate", "description": "沿引用图谱生成领域综述草稿，每一句都要过主张闸门。", "params": {"topic": "综述主题"}, "network": False, "cost": "model"},
+    {"name": "writing.outline", "description": "从 Idea 生成论文框架，References 只能来自本地库。", "params": {"idea": "论文想法"}, "network": False, "cost": "model"},
+    {"name": "discover.search", "description": "去外部学术源检索新论文。需要外网。", "params": {"query": "检索词", "limit": "返回条数"}, "network": True, "cost": "network"},
+]
+
+MOCK_PLAN = {
+    "source": "offline",
+    "stop_when": "拿到足以支撑结论的原文证据即可收尾",
+    "note": "mock 模式演示确定性计划的形状",
+    "steps": [
+        {"index": 0, "tool": "library.stats", "args": {}, "why": "先知道库里有什么，才知道能回答到什么程度", "label": "先看清库里有什么", "source": "offline"},
+        {"index": 1, "tool": "library.search", "args": {"query": "训练的硬件与时长", "top_k": 8}, "why": "调研目标本身就是最好的检索式", "label": "检索证据", "source": "offline"},
+        {"index": 2, "tool": "graph.build", "args": {}, "why": "目标涉及脉络与关系，需要引用图谱", "label": "构建引用图谱", "source": "offline"},
+        {"index": 3, "tool": "future_work.scan", "args": {"max_items": 4}, "why": "目标是找空白，需要知道哪些待办已被解决", "label": "扫描 Future Work 时效性", "source": "offline"},
+    ],
+}
+
+MOCK_OBSERVATIONS = {
+    "library.stats": {"summary": "本地库共 2 篇文献、30 页、174 个检索切块", "ms": 60,
+                      "highlights": ["Attention Is All You Need（2017，v7）"],
+                      "payload": {"papers": [{"doc_id": "mock-attention-v7", "title": "Attention Is All You Need"}], "total_pages": 30, "total_chunks": 174}},
+    "library.search": {"summary": "检索「训练的硬件与时长」命中 3 条带锚点的证据", "ms": 420,
+                       "highlights": ["p7：We trained the base model on 8 NVIDIA P100 GPUs for 12 hours."],
+                       "payload": {"evidence": [{"doc_id": "mock-attention-v7", "page": 7, "quote": "We trained the base model on 8 NVIDIA P100 GPUs for 12 hours."}]}},
+    "graph.build": {"summary": "引用图谱：60 个节点、76 条边；cornerstone 5、bridge 3、derivative 8", "ms": 2100,
+                    "highlights": ["Layer Normalization：PageRank 位居前 25%，被 3 篇文献引用"],
+                    "payload": {"roles": {"cornerstone": ["ext:layer-normalization"], "bridge": ["mock-attention-v7"]}, "evidence": []}},
+    "future_work.scan": {"summary": "扫出 4 条 Future Work，状态分布：open 2、resolved 1、partially 1", "ms": 1600,
+                         "highlights": ["[resolved] 用更长的序列验证注意力机制的可扩展性"],
+                         "payload": {"items": [{"text": "用更长的序列验证注意力机制的可扩展性", "status": "resolved"}]}},
+}
+
+MOCK_FINDINGS = {
+    "library": {"papers": 2, "total_pages": 30, "total_chunks": 174},
+    "graph_roles": {"cornerstone": ["ext:layer-normalization"], "bridge": ["mock-attention-v7"], "derivative": ["ext:xception"]},
+    "key_nodes": [{"doc_id": "ext:layer-normalization", "title": "Layer Normalization", "role": "cornerstone",
+                   "reason": "PageRank 位居前 25%，被 3 篇文献引用，处在网络核心层（k-core=2）"}],
+    "future_work_status": {"open": 2, "resolved": 1, "partially": 1},
+    "future_work": [{"text": "用更长的序列验证注意力机制的可扩展性", "status": "resolved"}],
+    "evidence": [{"doc_id": "mock-attention-v7", "page": 7, "quote": "We trained the base model on 8 NVIDIA P100 GPUs for 12 hours."}],
+}
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "ZhiWeiMock/0.1"
 
@@ -270,6 +323,8 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path
         query = parse_qs(parsed.query)
 
+        if path == "/api/agent/tools":
+            return self._json({"tools": MOCK_TOOLS, "count": len(MOCK_TOOLS)})
         if path == "/api/health":
             return self._json({
                 "status": "ok", "version": "0.1.0-mock", "llm_configured": False,
@@ -366,6 +421,10 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/qa/stream":
             return self._sse_qa(body)
+        if path == "/api/agent/plan":
+            return self._json(MOCK_PLAN)
+        if path == "/api/agent/run":
+            return self._sse_agent(body)
         if path == "/api/qa":
             return self._json({"question": body.get("question", ""), "text": QA_TEXT,
                                "claims": CLAIMS, "refused": False, "support_rate": 0.67, "trace": []})
@@ -423,6 +482,52 @@ class Handler(BaseHTTPRequestHandler):
         return self._json({"error": {"kind": "not_found", "message": path}}, 404)
 
     # ------------------------------------------------------------ SSE
+    def _sse_agent(self, body: dict):
+        """假后端也要如实演示「规划 → 调工具 → 记观察 → 收尾过闸门」的事件形状。"""
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+
+        def send(event: str, payload: dict, delay: float = 0.2):
+            chunk = f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+            self.wfile.write(chunk.encode("utf-8"))
+            self.wfile.flush()
+            time.sleep(delay)
+
+        goal = body.get("goal", "")
+        try:
+            send("plan", {**MOCK_PLAN, "goal": goal, "replanned": False})
+            for step in MOCK_PLAN["steps"]:
+                send("step", {"step": step["index"] + 1, "tool": step["tool"], "status": "running",
+                              "label": step["label"], "why": step["why"], "args": step["args"], "round": 1}, 0.15)
+                send("tool", {"step": step["index"] + 1, "name": step["tool"], "detail": step["why"]}, 0.05)
+                observation = MOCK_OBSERVATIONS[step["tool"]]
+                send("observation", {"step": step["index"] + 1, "tool": step["tool"], "ok": True,
+                                     "summary": observation["summary"], "highlights": observation["highlights"],
+                                     "ms": observation["ms"], "payload": observation["payload"],
+                                     "evidence_count": len(observation["payload"].get("evidence", [])),
+                                     "memory": {"observations": step["index"] + 1, "folded": 0, "chars": 1200 + 400 * step["index"],
+                                                "budget_chars": 8000, "tools": {}, "evidence": 3}}, 0.2)
+                send("step", {"step": step["index"] + 1, "tool": step["tool"], "status": "done",
+                              "label": step["label"], "ms": observation["ms"], "ok": True,
+                              "summary": observation["summary"], "round": 1}, 0.12)
+            for claim in CLAIMS:
+                send("claim", claim, 0.3)
+            send("done", {
+                "goal": goal, "plan": {"rounds": 1, "sources": ["offline"]},
+                "observations": [{"step": i + 1, "tool": s["tool"], "ok": True} for i, s in enumerate(MOCK_PLAN["steps"])],
+                "findings": MOCK_FINDINGS, "memory": {"observations": len(MOCK_PLAN["steps"]), "folded": 0,
+                                                      "compressions": 0, "chars": 3200, "budget_chars": 8000,
+                                                      "tools": {}, "evidence": 3},
+                "text": QA_TEXT, "refused": False, "support_rate": 0.67,
+                "claim_counts": {"allow": 2, "downgrade": 0, "block": 1},
+                "claims": CLAIMS, "stopped_early": False, "stop_reason": "",
+                "ms": 4800, "usage": {"calls": 4, "total_cost_yuan": 0.0009},
+            }, 0.05)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
     def _sse_qa(self, body: dict):
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")

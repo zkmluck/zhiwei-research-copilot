@@ -107,4 +107,7 @@ export const api = {
   diagram: (kind, spec, extra = {}) => post('/api/writing/diagram', { kind, spec, ...extra }),
   figure: (body) => post('/api/writing/figure', body),
   artifacts: () => get('/api/writing/artifacts'),
+  agentTools: () => get('/api/agent/tools'),
+  agentPlan: (goal, docIds) => post('/api/agent/plan', { goal, doc_ids: docIds }),
+  agentRun: (body, onEvent, signal) => stream('/api/agent/run', body, onEvent, signal),
 };

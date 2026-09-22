@@ -167,12 +167,13 @@ async function runBuild() {
   button.textContent = '构建中…';
   try {
     const classify = qs('#graph-classify').checked;
-    await api.graphBuild({ doc_ids: docIds, expand_external: true });
+    await api.graphBuild({ doc_ids: docIds, expand_external: true, classify });
     const payload = await api.graph(docIds);
     lastPayload = payload;
     const stats = payload.metrics || {};
+    const costly = classify ? ' · 引用意图由模型精判' : ' · 引用意图用离线启发式';
     qs('#graph-stats').textContent =
-      `节点 ${stats.nodes ?? '—'} · 边 ${stats.edges ?? '—'} · 密度 ${fmtNumber(stats.density, 4)} · 弱连通分量 ${stats.components ?? '—'}`;
+      `节点 ${stats.nodes ?? '—'} · 边 ${stats.edges ?? '—'} · 密度 ${fmtNumber(stats.density, 4)} · 弱连通分量 ${stats.components ?? '—'}${costly}`;
     await draw(qs('#graph-substantive').checked);
     const cornerstone = (payload.nodes || []).filter((n) => n.role === 'cornerstone');
     if (cornerstone.length) renderDetail(cornerstone[0].node_id || cornerstone[0].doc_id);
