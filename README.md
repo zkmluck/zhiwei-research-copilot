@@ -281,3 +281,4 @@ python -m unittest discover -s tests -v
 
 演示视频脚本见 [`docs/演示视频脚本.md`](docs/演示视频脚本.md)，
 技术文档见 [`docs/技术文档.md`](docs/技术文档.md)。
+提交物对照表（哪些材料对应哪个文件、还差什么）见 [`docs/提交材料清单.md`](docs/提交材料清单.md)。
